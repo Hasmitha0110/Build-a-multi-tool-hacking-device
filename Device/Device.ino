@@ -187,6 +187,77 @@ void emuTask(void* pv) {
   vTaskDelete(nullptr);
 }
 
+// ----------- MAGIC CARD WRITE HELPERS (Gen1A CUID) ------------
+
+// Default Key A for block 0 on most Magic Cards (sometimes FF FF FF FF FF FF)
+uint8_t defaultKeyA[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+// Authenticate block 0
+bool mifareAuthBlock0(uint8_t *uid, uint8_t uidLen) {
+  return nfc->mifareclassic_AuthenticateBlock(
+    uid,
+    uidLen,
+    0,                    // block 0
+    MIFARE_CMD_AUTH_A,    // correct constant for Elechouse
+    defaultKeyA
+  );
+}
+
+
+// Write raw block 0 (16 bytes)
+bool writeBlock0(const uint8_t *newUID, uint8_t uidLen) {
+  if (uidLen < 4) return false;
+
+  uint8_t block0[16];
+
+  block0[0] = newUID[0];
+  block0[1] = newUID[1];
+  block0[2] = newUID[2];
+  block0[3] = newUID[3];
+
+  block0[4] = block0[0] ^ block0[1] ^ block0[2] ^ block0[3];
+
+  block0[5] = 0x88;
+  block0[6] = 0x04;
+  block0[7] = 0x00;
+
+  for (int i = 8; i < 16; i++) block0[i] = 0x00;
+
+  return nfc->mifareclassic_WriteDataBlock(0, block0);
+}
+
+// Write UID to Magic Card
+bool writeUIDToMagicCard(uint8_t uid[10], uint8_t uidLen) {
+  Serial.println("[WRITE] Present a MAGIC Gen1A card...");
+
+  uint8_t readUid[10];
+  uint8_t readLen = 0;
+
+  while (!nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, readUid, &readLen)) {
+    delay(100);
+  }
+
+  Serial.println("[WRITE] Card detected. Authenticating block 0...");
+
+  if (!mifareAuthBlock0(readUid, readLen)) {
+    Serial.println("[WRITE] Auth failed (not a magic card?)");
+    return false;
+  }
+
+  Serial.println("[WRITE] Auth OK. Writing UID...");
+
+  if (!writeBlock0(uid, uidLen)) {
+    Serial.println("[WRITE] Block 0 write FAILED");
+    return false;
+  }
+
+  Serial.println("[WRITE] UID WRITE SUCCESS!");
+  return true;
+}
+
+
+
+
 // ---------- Web handlers ----------
 
 void handleRoot() {
@@ -373,13 +444,52 @@ void handleStop() {
 }
 
 // /write — placeholder
+// /write?index=N — writes UID to MAGIC CARD
 void handleWrite() {
   DynamicJsonDocument doc(256);
-  doc["success"] = false;
-  doc["msg"] = "UID cloning not supported (locked).";
-  String out; serializeJson(doc, out);
+
+  if (!server.hasArg("index")) {
+    doc["success"] = false;
+    doc["msg"] = "Missing index";
+    String out; serializeJson(doc, out);
+    server.send(400, "application/json", out);
+    return;
+  }
+
+  int idx = server.arg("index").toInt();
+  if (idx < 0 || idx >= (int)cardDatabase.size()) {
+    doc["success"] = false;
+    doc["msg"] = "Invalid index";
+    String out; serializeJson(doc, out);
+    server.send(400, "application/json", out);
+    return;
+  }
+
+  CardRecord &c = cardDatabase[idx];
+
+  doc["success"] = true;
+  doc["msg"] = "Place MAGIC card on reader...";
+
+  // send initial response so UI updates instantly
+  String early; serializeJson(doc, early);
+  server.send(200, "application/json", early);
+
+  // Perform low-level Magic card write
+  bool ok = writeUIDToMagicCard(c.uidBytes, c.uidLength);
+
+  DynamicJsonDocument finalResp(256);
+  if (ok) {
+    finalResp["success"] = true;
+    finalResp["msg"] = "UID write SUCCESS!";
+  } else {
+    finalResp["success"] = false;
+    finalResp["msg"] = "Failed to write UID (not a magic card?)";
+  }
+
+  String out; serializeJson(finalResp, out);
   server.send(200, "application/json", out);
 }
+
 
 // /delete?index=N
 void handleDelete() {
@@ -387,6 +497,8 @@ void handleDelete() {
   if (idx >= 0 && idx < (int)cardDatabase.size()) cardDatabase.erase(cardDatabase.begin() + idx);
   server.send(200, "text/plain", "OK");
 }
+
+
 
 // ---------- Setup & Loop ----------
 void setup() {
