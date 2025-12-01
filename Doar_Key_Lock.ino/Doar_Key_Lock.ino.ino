@@ -37,7 +37,7 @@ MFRC522 mfrc522(SS_PIN, RST_PIN);
 // Keep them as HEX bytes, e.g., {0x29, 0xBD, 0x1B, 0x06}
 byte authorizedUIDs[][4] = {
   {0x29, 0xBD, 0x1B, 0x06}, // Physical card
-  {0x08, 0x29, 0xBD, 0x1B}  // Example PN532-emulated format (adjust if needed)
+  {0x08, 0xBD, 0x1B, 0x06}  // Example PN532-emulated format (adjust if needed)
 };
 const uint8_t numAuthorizedCards = sizeof(authorizedUIDs) / 4;
 
