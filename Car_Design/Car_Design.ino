@@ -33,6 +33,15 @@ void setup() {
 }
 
 void blinkLED(int pin, int times) {
+  if (times == 1) {
+    // Long single blink (LOCK)
+    digitalWrite(pin, HIGH);
+    delay(700);
+    digitalWrite(pin, LOW);
+    return;
+  }
+
+  // Double blink (UNLOCK)
   for (int i = 0; i < times; i++) {
     digitalWrite(pin, HIGH);
     delay(200);
@@ -51,32 +60,34 @@ void loop() {
 
   if (vt == HIGH) {
 
-    // LOCK — trigger once when D1 goes from LOW → HIGH
+    // LOCK — one long blink
     if (d1 == HIGH && prev_d1 == LOW) {
       Serial.println("LOCK");
       blinkLED(LED_LOCK, 1);
     }
 
-    // UNLOCK — trigger once
+    // UNLOCK — double blink
     if (d2 == HIGH && prev_d2 == LOW) {
       Serial.println("UNLOCK");
       blinkLED(LED_LOCK, 2);
     }
 
-    // TRUNK — trigger once
-    if (d3 == HIGH && prev_d3 == LOW) {
-      Serial.println("TRUNK");
+    // TRUNK — blink continuously while holding button
+    if (d3 == HIGH) {
+      Serial.println("TRUNK HOLD");
       digitalWrite(LED_TRUNK, HIGH);
-      delay(500);
+      delay(150);
       digitalWrite(LED_TRUNK, LOW);
+      delay(150);
     }
 
-    // ALARM — trigger once
-    if (d4 == HIGH && prev_d4 == LOW) {
-      Serial.println("ALARM");
+    // ALARM — blink continuously while holding button
+    if (d4 == HIGH) {
+      Serial.println("ALARM HOLD");
       digitalWrite(LED_ALARM, HIGH);
-      delay(500);
+      delay(150);
       digitalWrite(LED_ALARM, LOW);
+      delay(150);
     }
   }
 
